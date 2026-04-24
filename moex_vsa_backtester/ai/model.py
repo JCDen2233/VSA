@@ -57,7 +57,8 @@ class BaseModel(ABC, nn.Module):
     def _init_weights(self, module: nn.Module) -> None:
         """Initialize weights using Xavier initialization."""
         if isinstance(module, (nn.Linear, nn.Conv1d)):
-            nn.init.xavier_uniform_(module.weight)
+            if module.weight is not None:
+                nn.init.xavier_uniform_(module.weight)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
 
@@ -98,7 +99,9 @@ class TradeClassifier(BaseModel):
         layers.append(nn.Linear(prev_size, 1))
         self.features = nn.Sequential(*layers)
         
-        self._apply(self._init_weights)
+        # Initialize weights manually to avoid _apply issues with BatchNorm
+        for module in self.modules():
+            self._init_weights(module)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.use_attention:

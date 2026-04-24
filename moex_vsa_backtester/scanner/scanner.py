@@ -87,13 +87,23 @@ class SignalScanner:
         from utils.market_hours import is_in_session_range
         now_ms = datetime.now(_MS)
         
-        # Get the latest bar timestamp
-        latest_ts = self.get_latest_timestamp(ticker)
+        # Get the latest bar timestamp INSIDE trading session
+        latest_ts = self.get_latest_session_timestamp(ticker)
         if not latest_ts:
-            return []
-            
-        latest_dt = datetime.fromtimestamp(latest_ts, _MS)
-        if not is_in_session_range(latest_dt):
+            # Fallback: try to get any latest timestamp even outside session
+            latest_ts = self.get_latest_timestamp(ticker)
+            if not latest_ts:
+                return []
+            latest_dt = datetime.fromtimestamp(latest_ts, _MS)
+            logger.debug(f"[{ticker}] Last bar {latest_dt} outside session, but will try to analyze")
+        else:
+            latest_dt = datetime.fromtimestamp(latest_ts, _MS)
+        
+        # Don't skip analysis based on current time - allow checking historical signals
+        # Only skip if the latest bar is too old (> 7 days)
+        bar_age_days = (now_ms.timestamp() - latest_ts) / (3600 * 24)
+        if bar_age_days > 7:
+            logger.debug(f"[{ticker}] Last bar too old ({bar_age_days:.1f} days), skipping")
             return []
         
         # Use shorter lookback for faster signal detection
@@ -226,7 +236,6 @@ class SignalScanner:
     def get_latest_timestamp(self, ticker: str) -> Optional[int]:
         from sqlalchemy import text
         from db import get_db_manager
-        from utils.market_hours import is_in_session_range
         
         db = get_db_manager()
         table_name = f"{ticker.upper()}_H1"
@@ -238,14 +247,38 @@ class SignalScanner:
                 )
                 row = result.fetchone()
                 ts = row[0] if row else None
-                if ts is not None:
-                    bar_dt = datetime.fromtimestamp(int(ts), _MS)
-                    if is_in_session_range(bar_dt):
-                        return int(ts)
-                    return None  # Last bar was not in session
-                return None
+                return int(ts) if ts is not None else None
         except Exception as e:
             logger.debug(f"Error getting latest timestamp for {ticker}: {e}")
+            return None
+
+    def get_latest_session_timestamp(self, ticker: str) -> Optional[int]:
+        """Get the latest timestamp that falls within trading session."""
+        from sqlalchemy import text
+        from db import get_db_manager
+        from utils.market_hours import is_in_session_range
+        
+        db = get_db_manager()
+        table_name = f"{ticker.upper()}_H1"
+        
+        try:
+            with db.engine.connect() as conn:
+                # Get last 24 bars to check which ones are in session
+                result = conn.execute(
+                    text(f"SELECT timestamp FROM {table_name} ORDER BY timestamp DESC LIMIT 24")
+                )
+                rows = result.fetchall()
+                
+                for row in rows:
+                    ts = row[0]
+                    if ts is not None:
+                        bar_dt = datetime.fromtimestamp(int(ts), _MS)
+                        if is_in_session_range(bar_dt):
+                            return int(ts)
+                
+                return None  # No bars in session found
+        except Exception as e:
+            logger.debug(f"Error getting latest session timestamp for {ticker}: {e}")
             return None
 
     def get_latest_price(self, ticker: str) -> Optional[float]:
