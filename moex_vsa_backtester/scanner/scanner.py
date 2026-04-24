@@ -82,7 +82,7 @@ class SignalScanner:
     def scan_instrument(
         self,
         ticker: str,
-        lookback_hours: int = 168,
+        lookback_hours: int = 24,
     ) -> List[Dict]:
         from utils.market_hours import is_in_session_range
         now_ms = datetime.now(_MS)
@@ -96,7 +96,7 @@ class SignalScanner:
         if not is_in_session_range(latest_dt):
             return []
         
-        # Continue with standard scan if last bar is in session
+        # Use shorter lookback for faster signal detection
         start_ts = int((now_ms - timedelta(hours=lookback_hours)).timestamp())
         end_ts = int(now_ms.timestamp())
 
@@ -120,16 +120,14 @@ class SignalScanner:
             if signals.empty:
                 return []
             
-            # Prefer signals from the last 8 hours; fall back to full lookback if none found
-            recent_signals = signals[signals["timestamp"] >= int((now_ms - timedelta(hours=8)).timestamp())].copy()
-            if recent_signals.empty:
-                recent_signals = signals[signals["timestamp"] >= start_ts].copy()
+            # Take ONLY the most recent signal - immediate execution
+            latest_signal = signals.iloc[-1]
             
-            if recent_signals.empty:
+            # Check signal age - only process signals from last 2 hours
+            signal_age_hours = (now_ms.timestamp() - latest_signal["timestamp"]) / 3600
+            if signal_age_hours > 2:
+                logger.debug(f"[{ticker}] Signal too old ({signal_age_hours:.1f}h), skipping")
                 return []
-            
-            # Take the most recent signal from the filtered results
-            latest_signal = recent_signals.iloc[-1]
             
             predictor = self.get_predictor(ticker)
             if predictor is not None:

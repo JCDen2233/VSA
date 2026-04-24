@@ -91,7 +91,7 @@ class HourlyScheduler:
                 with self.lock:
                     self.candle_timestamps[ticker] = ts
 
-            signals = self.scanner.scan_instrument(ticker)
+            signals = self.scanner.scan_instrument(ticker, lookback_hours=24)
             if signals:
                 self.scanner.log_signal(signals[-1])
                 logger.info(f"[{ticker}] Signal detected: {signals[-1]}")
@@ -127,7 +127,8 @@ class HourlyScheduler:
                     f"[{ticker}] New candle at {datetime.fromtimestamp(new_ts, _MS).strftime('%H:%M')}"
                 )
 
-                signals = self.scanner.scan_instrument(ticker, lookback_hours=168)
+                # Use shorter lookback for immediate signal detection
+                signals = self.scanner.scan_instrument(ticker, lookback_hours=24)
                 if signals:
                     latest_signal = signals[-1]
                     
