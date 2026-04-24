@@ -19,7 +19,7 @@ class DatasetGenerator:
         include_vsa: bool = True,
     ) -> Tuple[np.ndarray, np.ndarray]:
         if not trades or prices.empty:
-            logger.warning("No trades or prices provided")
+            logger.warning("Нет сделок или цен для анализа")
             return np.array([]), np.array([])
 
         prices = prices.sort_values("timestamp").reset_index(drop=True)
@@ -33,13 +33,13 @@ class DatasetGenerator:
                 y.append(1 if trade.get("pnl", 0) > 0 else 0)
 
         if not X:
-            logger.warning("No samples generated")
+            logger.warning("Не удалось сгенерировать примеры")
             return np.array([]), np.array([])
 
         X = np.array(X)
         y = np.array(y)
 
-        logger.info(f"Generated dataset: {X.shape[0]} samples, {X.shape[1]} features")
+        logger.info(f"Сгенерирован датасет: {X.shape[0]} примеров, {X.shape[1]} признаков")
         return X, y
 
     def _add_technicals(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -229,7 +229,7 @@ class DatasetGenerator:
 
     def save_dataset(self, X: np.ndarray, y: np.ndarray, path: Path):
         np.savez(path, X=X, y=y)
-        logger.info(f"Saved dataset to {path}")
+        logger.info(f"Датасет сохранён в {path}")
 
     def load_dataset(self, path: Path) -> Tuple[np.ndarray, np.ndarray]:
         data = np.load(path)

@@ -24,7 +24,7 @@ class HourlyScheduler:
         self.running = True
         self.stop_event.clear()
 
-        logger.info("Starting hourly scheduler")
+        logger.info("Запуск планировщика почасового сканирования")
 
         self._full_scan()
 
@@ -42,7 +42,7 @@ class HourlyScheduler:
                     self._check_new_candles(now_ms)
                     self._check_interim_report(now_ms)
                 except Exception as e:
-                    logger.error(f"Error in scan loop: {e}")
+                    logger.error(f"Ошибка в цикле сканирования: {e}")
 
                 counter += 1
 
@@ -50,12 +50,12 @@ class HourlyScheduler:
                     with self.lock:
                         ts_copy = dict(self.candle_timestamps)
                     logger.info(
-                        f"[{now_ms.strftime('%H:%M:%S')}] Scanner alive | "
-                        f"Latest candles: {len(ts_copy)} tickers scanned"
+                        f"[{now_ms.strftime('%H:%M:%S')}] Сканирование активно | "
+                        f"Последние свечи: {len(ts_copy)} тикеров просканировано"
                     )
 
                 self.stop_event.wait(self.interval_seconds)
-            logger.info("Scanner loop stopped")
+            logger.info("Цикл сканера остановлен")
 
         return Thread(target=run_loop, daemon=True).start()
 
@@ -64,7 +64,7 @@ class HourlyScheduler:
             if hasattr(self.scanner, 'generate_interim_report'):
                 report = self.scanner.generate_interim_report()
                 logger.info("=" * 60)
-                logger.info(f"INTERIM REPORT - {now_ms.strftime('%Y-%m-%d %H:%M')}")
+                logger.info(f"ПРОМЕЖУТОЧНЫЙ ОТЧЁТ - {now_ms.strftime('%Y-%m-%d %H:%M')}")
                 logger.info("=" * 60)
                 logger.info(report)
                 logger.info("=" * 60)
@@ -78,10 +78,10 @@ class HourlyScheduler:
     def _full_scan(self):
         now_ms = datetime.now(_MS)
         if not is_in_session_range(now_ms):
-            logger.info(f"[{now_ms.strftime('%H:%M')}] Market closed, skipping full scan")
+            logger.info(f"[{now_ms.strftime('%H:%M')}] Рынок закрыт, пропускаем полное сканирование")
             return
         
-        logger.info("Running full instrument scan...")
+        logger.info("Запуск полного сканирования инструментов...")
         instruments = self.scanner.get_all_instruments()
         signal_count = 0
 
@@ -91,15 +91,15 @@ class HourlyScheduler:
                 with self.lock:
                     self.candle_timestamps[ticker] = ts
 
-            signals = self.scanner.scan_instrument(ticker)
+            signals = self.scanner.scan_instrument(ticker, lookback_hours=24)
             if signals:
                 self.scanner.log_signal(signals[-1])
-                logger.info(f"[{ticker}] Signal detected: {signals[-1]}")
+                logger.info(f"[{ticker}] Сигнал обнаружен: {signals[-1]}")
                 signal_count += 1
 
         logger.info(
-            f"Full scan complete: {len(self.candle_timestamps)} initialized, "
-            f"{signal_count} signals found"
+            f"Полное сканирование завершено: {len(self.candle_timestamps)} инициализировано, "
+            f"{signal_count} сигналов найдено"
         )
 
     def _check_new_candles(self, now_ms: datetime):
@@ -124,10 +124,11 @@ class HourlyScheduler:
 
                 new_ts = current_ts
                 logger.info(
-                    f"[{ticker}] New candle at {datetime.fromtimestamp(new_ts, _MS).strftime('%H:%M')}"
+                    f"[{ticker}] Новая свеча в {datetime.fromtimestamp(new_ts, _MS).strftime('%H:%M')}"
                 )
 
-                signals = self.scanner.scan_instrument(ticker, lookback_hours=168)
+                # Use shorter lookback for immediate signal detection
+                signals = self.scanner.scan_instrument(ticker, lookback_hours=24)
                 if signals:
                     latest_signal = signals[-1]
                     
@@ -138,15 +139,15 @@ class HourlyScheduler:
                         if current_price:
                             try:
                                 result = self.scanner.vt_service.execute_signal(latest_signal, current_price)
-                                logger.info(f"[{ticker}] Trade execution result: {result}")
+                                logger.info(f"[{ticker}] Результат исполнения сделки: {result}")
                             except Exception as e:
-                                logger.error(f"[{ticker}] Trade execution error: {e}")
+                                logger.error(f"[{ticker}] Ошибка исполнения сделки: {e}")
 
                     if hasattr(self.scanner, "run_instrument_analysis"):
                         try:
                             self.scanner.run_instrument_analysis_for_signal(ticker, latest_signal)
                         except Exception as e:
-                            logger.error(f"[{ticker}] Analysis error: {e}")
+                            logger.error(f"[{ticker}] Ошибка анализа: {e}")
 
     def _init_timestamps(self):
         instruments = self.scanner.get_all_instruments()

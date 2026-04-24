@@ -32,7 +32,7 @@ class SignalScanner:
                 model_path=model_path,
                 threshold=ai_threshold,
             )
-            logger.info(f"AI model loaded from {model_path}")
+            logger.info(f"AI модель загружена из {model_path}")
 
     def get_predictor(self, ticker: str) -> Optional[TradePredictor]:
         if ticker in self.predictors:
@@ -45,7 +45,7 @@ class SignalScanner:
                 threshold=self.ai_threshold,
             )
             self.predictors[ticker] = predictor
-            logger.info(f"AI model for {ticker} loaded")
+            logger.info(f"AI модель для {ticker} загружена")
             return predictor
         
         if "default" in self.predictors:
@@ -73,16 +73,16 @@ class SignalScanner:
                         instruments.add(ticker)
             
             instruments = sorted(list(instruments))
-            logger.info(f"Found {len(instruments)} instruments: {instruments}")
+            logger.info(f"Найдено {len(instruments)} инструментов: {instruments}")
             return instruments
         except Exception as e:
-            logger.error(f"Error getting instruments: {e}")
+            logger.error(f"Ошибка получения инструментов: {e}")
             return []
 
     def scan_instrument(
         self,
         ticker: str,
-        lookback_hours: int = 168,
+        lookback_hours: int = 24,
     ) -> List[Dict]:
         from utils.market_hours import is_in_session_range
         now_ms = datetime.now(_MS)
@@ -96,7 +96,7 @@ class SignalScanner:
         if not is_in_session_range(latest_dt):
             return []
         
-        # Continue with standard scan if last bar is in session
+        # Use shorter lookback for faster signal detection
         start_ts = int((now_ms - timedelta(hours=lookback_hours)).timestamp())
         end_ts = int(now_ms.timestamp())
 
@@ -120,16 +120,14 @@ class SignalScanner:
             if signals.empty:
                 return []
             
-            # Prefer signals from the last 8 hours; fall back to full lookback if none found
-            recent_signals = signals[signals["timestamp"] >= int((now_ms - timedelta(hours=8)).timestamp())].copy()
-            if recent_signals.empty:
-                recent_signals = signals[signals["timestamp"] >= start_ts].copy()
+            # Take ONLY the most recent signal - immediate execution
+            latest_signal = signals.iloc[-1]
             
-            if recent_signals.empty:
+            # Check signal age - only process signals from last 2 hours
+            signal_age_hours = (now_ms.timestamp() - latest_signal["timestamp"]) / 3600
+            if signal_age_hours > 2:
+                logger.debug(f"[{ticker}] Signal too old ({signal_age_hours:.1f}h), skipping")
                 return []
-            
-            # Take the most recent signal from the filtered results
-            latest_signal = recent_signals.iloc[-1]
             
             predictor = self.get_predictor(ticker)
             if predictor is not None:
@@ -140,7 +138,7 @@ class SignalScanner:
             return self._format_signals(latest_signal, ticker)
             
         except Exception as e:
-            logger.error(f"Error scanning {ticker}: {e}")
+            logger.error(f"Ошибка сканирования {ticker}: {e}")
             return []
 
     def _format_signals(self, signal: pd.Series, ticker: str) -> List[Dict]:
@@ -190,20 +188,20 @@ class SignalScanner:
                     crossed_sl = " ✅"
         
         logger.info("=" * 60)
-        logger.info(f"📊 SIGNAL DETECTED: {signal['ticker']}")
+        logger.info(f"📊 ОБНАРУЖЕН СИГНАЛ: {signal['ticker']}")
         logger.info("=" * 60)
-        logger.info(f"⏰ Time:        {signal['signal_time']}")
-        logger.info(f"📈 Type:        {signal['signal_type']}")
-        logger.info(f"💵 Entry:      {signal['entry_price']:.4f}{crossed_entry}")
+        logger.info(f"⏰ Время:      {signal['signal_time']}")
+        logger.info(f"📈 Тип:        {signal['signal_type']}")
+        logger.info(f"💵 Вход:      {signal['entry_price']:.4f}{crossed_entry}")
         logger.info(f"🛡️  SL:         {signal['sl_price']:.4f}{crossed_sl}")
         logger.info(f"🎯 TP:          {signal['tp_price']:.4f}{crossed_tp}")
         
         if "ai_probability" in signal:
             prob = signal["ai_probability"]
-            logger.info(f"🤖 AI Prob:    {prob:.2%}")
-            status = "PASSED" if signal.get('ai_predicted_success') else "FAILED"
+            logger.info(f"🤖 AI Вероятность: {prob:.2%}")
+            status = "ПРОЙДЕН" if signal.get('ai_predicted_success') else "НЕ ПРОЙДЕН"
             icon = "✅" if signal.get('ai_predicted_success') else "❌"
-            logger.info(f"{icon} AI Filter:  {status}")
+            logger.info(f"{icon} AI Фильтр:   {status}")
         
         logger.info("=" * 60)
 
@@ -321,11 +319,11 @@ class SignalScanner:
                     except:
                         ai_passed = False
             
-            logger.info(f"[{ticker}] AI Analysis at signal time: prob={ai_prob*100:.1f}%, passed={ai_passed}")
+            logger.info(f"[{ticker}] AI анализ на момент сигнала: вероятность={ai_prob*100:.1f}%, пройден={ai_passed}")
             
         except Exception as e:
             import traceback
-            logger.error(f"[{ticker}] Analysis error: {e}\n{traceback.format_exc()}")
+            logger.error(f"[{ticker}] Ошибка анализа: {e}\n{traceback.format_exc()}")
 
     def run_instrument_analysis(self, ticker: str):
         logger.debug(f"[{ticker}] Running instrument analysis...")

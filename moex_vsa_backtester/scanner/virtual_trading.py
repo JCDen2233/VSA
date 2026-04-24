@@ -38,7 +38,7 @@ class VirtualTradingService:
         # Get the trader for this specific ticker
         trader = self.monitor.get_or_create_trader(ticker)
 
-        # Check for existing open positions
+        # Check for existing open positions FIRST - manage exits before new entries
         if ticker in trader.positions:
             pos = trader.positions[ticker]
             pos.signal_data["current_price"] = current_price
@@ -48,9 +48,11 @@ class VirtualTradingService:
 
             if result:
                 self._log_closed_trade(result)
-                return {"action": "CLOSED", "ticker": ticker, "pnl": result.pnl, "status": result.status}
-
-            return {"action": "HOLDING", "ticker": ticker}
+                # After closing, continue to check if we can re-enter on the same signal
+                if result.status in ("TP", "SL"):
+                    logger.info(f"[{ticker}] Position closed ({result.status}), checking for re-entry")
+                else:
+                    return {"action": "CLOSED", "ticker": ticker, "pnl": result.pnl, "status": result.status}
 
         # Check if we're allowed to open a new position
         if len(trader.positions) >= self.max_positions:
@@ -73,11 +75,12 @@ class VirtualTradingService:
 
             if pos:
                 pos.signal_data["current_price"] = current_price
+                logger.info(f"[{ticker}] ✅ POSITION OPENED: {pos.side} @ {entry_price:.4f}, SL={sl_price:.4f}, TP={tp_price:.4f}")
                 return {"action": "OPENED", "ticker": ticker, "position": pos}
             else:
                 return None
         else:
-            logger.info(f"Duplicate signal detected for {ticker}, skipping trade")
+            logger.debug(f"[{ticker}] Duplicate signal detected, skipping trade")
             return None
 
     def _log_closed_trade(self, pos):

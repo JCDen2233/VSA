@@ -24,12 +24,12 @@ class TradePredictor:
         if model_path and model_path.exists():
             self.load_model(model_path)
         else:
-            logger.warning(f"Model path {model_path} not found, using untrained predictor")
+            logger.warning(f"Путь к модели {model_path} не найден, используется нетренированный предиктор")
 
     def load_model(self, model_path: Path):
         self.trainer = ModelTrainer()
         self.trainer.load(model_path)
-        logger.debug(f"Model loaded from {model_path}")
+        logger.debug(f"Модель загружена из {model_path}")
 
     def predict(
         self,
@@ -40,7 +40,7 @@ class TradePredictor:
             return signals
 
         if self.trainer is None:
-            logger.warning("No trained model, returning signals without AI filter")
+            logger.warning("Нет обученной модели, возвращаем сигналы без AI фильтра")
             signals["ai_probability"] = 0.5
             signals["ai_predicted_success"] = False
             return signals
@@ -79,7 +79,7 @@ class TradePredictor:
         pred_df = pd.DataFrame(predictions)
         signals = pd.concat([signals.reset_index(drop=True), pred_df], axis=1)
         
-        logger.info(f"AI predictions added to {len(signals)} signals")
+        logger.info(f"AI прогнозы добавлены к {len(signals)} сигналам")
         return signals
 
     def filter_signals(
@@ -88,13 +88,13 @@ class TradePredictor:
         min_probability: float = 0.6,
     ) -> pd.DataFrame:
         if "ai_probability" not in signals.columns:
-            logger.warning("No AI predictions found, returning all signals")
+            logger.warning("AI прогнозы не найдены, возвращаем все сигналы")
             return signals
         
         filtered = signals[signals["ai_probability"] >= min_probability].copy()
         
         logger.info(
-            f"Filtered {len(signals)} signals to {len(filtered)} "
+            f"Отфильтровано {len(signals)} сигналов до {len(filtered)} "
             f"(min_prob={min_probability})"
         )
         return filtered
@@ -111,32 +111,32 @@ class TradePredictor:
     ) -> Optional[np.ndarray]:
         entry_ts = trade.get("entry_time")
         if entry_ts is None:
-            logger.debug("No entry_ts in trade")
+            logger.debug("Нет времени входа в сделке")
             return None
 
         prices = prices[prices["timestamp"] <= entry_ts].copy()
         
         if prices.empty:
-            logger.debug(f"No prices data available before signal timestamp {entry_ts}")
+            logger.debug(f"Нет данных о ценах до времени сигнала {entry_ts}")
             return None
 
         prices = prices.sort_values("timestamp").reset_index(drop=True)
 
         idx = prices[prices["timestamp"] == entry_ts].index
         if len(idx) == 0:
-            logger.debug(f"Signal timestamp {entry_ts} not found in filtered prices (range: {prices['timestamp'].min()} - {prices['timestamp'].max()})")
+            logger.debug(f"Время сигнала {entry_ts} не найдено в отфильтрованных ценах (диапазон: {prices['timestamp'].min()} - {prices['timestamp'].max()})")
             return None
 
         idx = idx[0]
         start_idx = idx - CONTEXT_WINDOW
 
         if start_idx < 0:
-            logger.debug(f"Not enough bars before signal: idx={idx}, need {CONTEXT_WINDOW}")
+            logger.debug(f"Недостаточно баров перед сигналом: idx={idx}, требуется {CONTEXT_WINDOW}")
             return None
 
         window_df = prices.iloc[start_idx:idx].copy()
         if len(window_df) < CONTEXT_WINDOW:
-            logger.debug(f"Not enough context bars: {len(window_df)} < {CONTEXT_WINDOW}")
+            logger.debug(f"Недостаточно контекстных баров: {len(window_df)} < {CONTEXT_WINDOW}")
             return None
 
         return self._extract_features(window_df, trade)

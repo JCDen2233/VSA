@@ -1,23 +1,79 @@
-from typing import Optional
-import numpy as np
+"""AI model architectures for VSA signal classification."""
 
+from abc import ABC, abstractmethod
+from typing import Optional, List
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from loguru import logger
 
+from domain import ModelArchitecture, DEFAULT_DROPOUT
 
-class TradeClassifier(nn.Module):
+
+class BaseModel(ABC, nn.Module):
+    """Abstract base class for all classifier models."""
+    
+    def __init__(self, input_size: int, dropout: float = DEFAULT_DROPOUT):
+        super().__init__()
+        self.input_size = input_size
+        self.dropout = dropout
+    
+    @abstractmethod
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through the network."""
+        pass
+    
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        """Predict class probabilities.
+        
+        Args:
+            x: Input features array
+            
+        Returns:
+            Probability predictions
+        """
+        self.eval()
+        with torch.no_grad():
+            x_tensor = torch.FloatTensor(x).to(next(self.parameters()).device)
+            logits = self.forward(x_tensor)
+            probs = torch.sigmoid(logits)
+            return probs.cpu().numpy()
+    
+    def predict(self, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
+        """Predict class labels.
+        
+        Args:
+            x: Input features array
+            threshold: Classification threshold
+            
+        Returns:
+            Binary class predictions
+        """
+        probs = self.predict_proba(x)
+        return (probs >= threshold).astype(int)
+    
+    def _init_weights(self, module: nn.Module) -> None:
+        """Initialize weights using Xavier initialization."""
+        if isinstance(module, (nn.Linear, nn.Conv1d)):
+            nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+
+
+class TradeClassifier(BaseModel):
+    """MLP-based trade classifier with optional attention mechanism."""
+    
     def __init__(
         self,
         input_size: int,
-        hidden_sizes: list = None,
-        dropout: float = 0.3,
+        hidden_sizes: Optional[List[int]] = None,
+        dropout: float = DEFAULT_DROPOUT,
         use_attention: bool = True,
     ):
-        super().__init__()
+        super().__init__(input_size, dropout)
         
-        self.input_size = input_size
         self.use_attention = use_attention
         hidden_sizes = hidden_sizes or [128, 64, 32]
         
@@ -42,14 +98,7 @@ class TradeClassifier(nn.Module):
         layers.append(nn.Linear(prev_size, 1))
         self.features = nn.Sequential(*layers)
         
-        self._init_weights()
-    
-    def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+        self._apply(self._init_weights)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.use_attention:
@@ -58,33 +107,21 @@ class TradeClassifier(nn.Module):
             x = x * attn_weights
         
         return self.features(x)
-    
-    def predict_proba(self, x: np.ndarray) -> np.ndarray:
-        self.eval()
-        with torch.no_grad():
-            x_tensor = torch.FloatTensor(x)
-            logits = self.forward(x_tensor)
-            probs = torch.sigmoid(logits)
-            return probs.numpy()
-    
-    def predict(self, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
-        probs = self.predict_proba(x)
-        return (probs >= threshold).astype(int)
 
 
-class Conv1DClassifier(nn.Module):
+class Conv1DClassifier(BaseModel):
+    """1D CNN-based classifier for sequential feature extraction."""
+    
     def __init__(
         self,
         input_size: int,
         context_window: int = 24,
-        hidden_sizes: list = None,
-        dropout: float = 0.3,
+        hidden_sizes: Optional[List[int]] = None,
+        dropout: float = DEFAULT_DROPOUT,
     ):
-        super().__init__()
+        super().__init__(input_size, dropout)
         
-        self.input_size = input_size
         self.context_window = context_window
-        
         hidden_sizes = hidden_sizes or [64, 32]
         
         features_per_step = input_size // context_window
@@ -113,14 +150,7 @@ class Conv1DClassifier(nn.Module):
             nn.Linear(32, 1)
         )
         
-        self._init_weights()
-    
-    def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv1d):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+        self._apply(self._init_weights)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch_size = x.size(0)
@@ -136,31 +166,20 @@ class Conv1DClassifier(nn.Module):
         x_combined = torch.cat([x_conv, x_flat], dim=1)
         
         return self.fc(x_combined)
-    
-    def predict_proba(self, x: np.ndarray) -> np.ndarray:
-        self.eval()
-        with torch.no_grad():
-            x_tensor = torch.FloatTensor(x)
-            logits = self.forward(x_tensor)
-            probs = torch.sigmoid(logits)
-            return probs.numpy()
-    
-    def predict(self, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
-        probs = self.predict_proba(x)
-        return (probs >= threshold).astype(int)
 
 
-class LSTMClassifier(nn.Module):
+class LSTMClassifier(BaseModel):
+    """LSTM-based sequence classifier."""
+    
     def __init__(
         self,
         input_size: int,
         hidden_size: int = 64,
         num_layers: int = 2,
-        dropout: float = 0.3,
+        dropout: float = DEFAULT_DROPOUT,
     ):
-        super().__init__()
+        super().__init__(input_size, dropout)
         
-        self.input_size = input_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         
@@ -179,9 +198,10 @@ class LSTMClassifier(nn.Module):
             nn.Linear(32, 1)
         )
         
-        self._init_weights()
+        self._init_lstm_weights()
     
-    def _init_weights(self):
+    def _init_lstm_weights(self) -> None:
+        """Initialize LSTM weights with orthogonal initialization."""
         for name, param in self.lstm.named_parameters():
             if "weight_ih" in name:
                 nn.init.xavier_uniform_(param)
@@ -200,21 +220,22 @@ class LSTMClassifier(nn.Module):
         last_output = lstm_out[:, -1, :]
         
         return self.fc(last_output)
-    
-    def predict_proba(self, x: np.ndarray) -> np.ndarray:
-        self.eval()
-        with torch.no_grad():
-            x_tensor = torch.FloatTensor(x)
-            logits = self.forward(x_tensor)
-            probs = torch.sigmoid(logits)
-            return probs.numpy()
-    
-    def predict(self, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
-        probs = self.predict_proba(x)
-        return (probs >= threshold).astype(int)
 
 
-def get_model(model_type: str, input_size: int, **kwargs) -> nn.Module:
+def get_model(model_type: str, input_size: int, **kwargs) -> BaseModel:
+    """Factory function to create model instances.
+    
+    Args:
+        model_type: Type of model ('mlp', 'conv1d', 'lstm')
+        input_size: Input feature dimension
+        **kwargs: Additional model-specific arguments
+        
+    Returns:
+        Initialized model instance
+        
+    Raises:
+        ValueError: If model_type is not recognized
+    """
     model_type = model_type.lower()
     
     if model_type == "mlp":
@@ -224,5 +245,5 @@ def get_model(model_type: str, input_size: int, **kwargs) -> nn.Module:
     elif model_type == "lstm":
         return LSTMClassifier(input_size, **kwargs)
     else:
-        logger.warning(f"Unknown model type {model_type}, using MLP")
+        logger.warning(f"Неизвестный тип модели {model_type}, используется MLP")
         return TradeClassifier(input_size, **kwargs)
