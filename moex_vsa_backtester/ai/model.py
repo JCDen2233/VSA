@@ -245,5 +245,5 @@ def get_model(model_type: str, input_size: int, **kwargs) -> BaseModel:
     elif model_type == "lstm":
         return LSTMClassifier(input_size, **kwargs)
     else:
-        logger.warning(f"Unknown model type {model_type}, using MLP")
+        logger.warning(f"Неизвестный тип модели {model_type}, используется MLP")
         return TradeClassifier(input_size, **kwargs)

@@ -58,7 +58,7 @@ class ModelTrainer:
         if X.size == 0 or y.size == 0:
             raise ValueError("Empty dataset provided")
 
-        logger.info(f"Training on {len(X)} samples, {X.shape[1]} features")
+        logger.info(f"Обучение на {len(X)} примерах, {X.shape[1]} признаков")
 
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=val_size, random_state=random_state, stratify=y
@@ -116,14 +116,14 @@ class ModelTrainer:
 
             if (epoch + 1) % 10 == 0:
                 logger.info(
-                    f"Epoch {epoch+1}/{self.epochs} - "
+                    f"Эпоха {epoch+1}/{self.epochs} - "
                     f"Train Loss: {train_loss:.4f}, "
                     f"Val Loss: {val_loss:.4f}, "
                     f"Val AUC: {val_metrics['auc']:.4f}"
                 )
 
             if patience_counter >= self.early_stopping_patience:
-                logger.info(f"Early stopping at epoch {epoch+1}")
+                logger.info(f"Ранняя остановка на эпохе {epoch+1}")
                 break
 
         self._load_best_state()
@@ -132,7 +132,7 @@ class ModelTrainer:
             self.model, val_loader, criterion
         )[1]
 
-        logger.info(f"Training complete. Best Val AUC: {best_auc:.4f}")
+        logger.info(f"Обучение завершено. Лучший Val AUC: {best_auc:.4f}")
         return final_metrics
 
     def _train_epoch(
@@ -253,7 +253,7 @@ class ModelTrainer:
             state["scaler_mean"] = self.scaler.mean_
             state["scaler_scale"] = self.scaler.scale_
         torch.save(state, path)
-        logger.info(f"Model saved to {path}")
+        logger.info(f"Модель сохранена в {path}")
 
     def load(self, path: Path):
         state = torch.load(path, map_location="cpu", weights_only=False)
@@ -281,4 +281,4 @@ class ModelTrainer:
         else:
             self.scaler = None
         
-        logger.info(f"Model loaded from {path}")
+        logger.info(f"Модель загружена из {path}")
