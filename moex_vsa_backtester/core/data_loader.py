@@ -13,18 +13,25 @@ class DataPreparator:
         self.cache = {}
 
     def load_and_prepare(
-        self, ticker: str, start_ts: int, end_ts: int
+        self, ticker: str, start_ts: int, end_ts: int, min_bars: int = 100
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        df_d1 = self._load_tf(ticker, "D1", start_ts, end_ts)
-        df_h1 = self._load_tf(ticker, "H1", start_ts, end_ts)
+        df_d1 = self._load_tf(ticker, "D1", start_ts, end_ts, min_bars)
+        df_h1 = self._load_tf(ticker, "H1", start_ts, end_ts, min_bars)
 
         df_d1 = self._add_indicators_d1(df_d1)
         df_h1 = self._add_indicators_h1(df_h1)
 
         return df_d1, df_h1
 
-    def _load_tf(self, ticker: str, tf: str, start_ts: int, end_ts: int) -> pd.DataFrame:
+    def _load_tf(self, ticker: str, tf: str, start_ts: int, end_ts: int, min_bars: int = 100) -> pd.DataFrame:
+        # Сначала пробуем загрузить по временному диапазону
         df = fetch_ohlcv(ticker, tf, start_ts, end_ts)
+        
+        # Если данных недостаточно, загружаем последние N баров независимо от времени
+        if len(df) < min_bars:
+            logger.debug(f"{ticker}_{tf}: Загружено {len(df)} баров (< {min_bars}), загружаю последние {min_bars} баров")
+            df = fetch_ohlcv_last_bars(ticker, tf, min_bars)
+        
         if df.empty:
             logger.warning(f"Empty data for {ticker}_{tf}")
             return df

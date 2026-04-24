@@ -11,7 +11,7 @@ from config import config
 from core.data_loader import DataPreparator
 from core.vsa_engine import detect_sr_levels, generate_vsa_signals
 from core.risk_manager import calculate_position_size
-from backtest.engine import VSA_Backtester
+from backtest.engine import VSABacktester
 from backtest.metrics import calculate_metrics, print_report
 from ai.dataset import DatasetGenerator
 from ai.trainer import ModelTrainer
@@ -150,7 +150,7 @@ def train_ai_model(trades, prices, model_path, ticker: str = None):
 def train_global_ai_model(args):
     from core.data_loader import DataPreparator
     from core.vsa_engine import detect_sr_levels, generate_vsa_signals
-    from backtest.engine import VSA_Backtester
+    from backtest.engine import VSABacktester
     from db import fetch_ohlcv
     from config import config
 
@@ -206,7 +206,7 @@ def train_global_ai_model(args):
 
             all_prices[ticker] = df_h1
 
-            backtester = VSA_Backtester(
+            backtester = VSABacktester(
                 capital=args.capital, risk_pct=args.risk, rr_ratio=args.rr
             )
             trades = backtester.run(signals, df_h1)
@@ -276,7 +276,7 @@ def run_backtest(args):
     model_path = Path(args.ai_model)
 
     if args.train_ai:
-        backtester_for_labels = VSA_Backtester(
+        backtester_for_labels = VSABacktester(
             capital=args.capital, risk_pct=args.risk, rr_ratio=args.rr
         )
 
@@ -298,7 +298,7 @@ def run_backtest(args):
                 min_probability=args.ai_threshold,
             )
 
-    backtester = VSA_Backtester(
+    backtester = VSABacktester(
         capital=args.capital, risk_pct=args.risk, rr_ratio=args.rr
     )
 
